@@ -17,6 +17,8 @@ fit the limits in `config.toml` go into the feed, which keeps each for 14 days.
   includes utilities, the rent is the total; otherwise the total is the rent
   plus an estimate of 50 EUR + 2 EUR per m² (~150 EUR for 50 m²). Each item
   shows the estimate and quotes what the ad says about utilities.
+- **Rooms in shared flats** stay out: ads with under 10 m² a room, or worded
+  as one ("Istaba Vecrīgā …", "izīrē istabu").
 - **Bumped ads** (lifted back to the top) keep their ID and never come back.
 - **Flats posted again** under a new ID (same deal, street, rooms, area and
   floor) stay out, unless the price is lower; the item then says what it was.

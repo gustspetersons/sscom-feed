@@ -53,6 +53,7 @@ DEALS = {"hand_over": "Izīrē", "sell": "Pārdod"}
 # ss.com's names for districts in its URLs: (name, locative for the title)
 DISTRICTS = {"centre": ("Centrs", "Centrā"), "vecriga": ("Vecrīga", "Vecrīgā")}
 
+MIN_M2_PER_ROOM = 10  # less a room, and the ad is for one room of a shared flat
 MAX_PAGES = 10  # listing pages per section on an ordinary run
 MAX_SCAN_PAGES = 150  # listing pages per section when reading it in full
 REQUEST_GAP = 1.5  # seconds between requests, to go easy on ss.com
@@ -126,6 +127,14 @@ UTILITIES_EXTRA = [
     ]
 ]
 UTILITY_WORDS = re.compile(r"komunāl|utilit|\bbills\b|коммунал", re.IGNORECASE)
+# Words of an ad for one room in a shared flat, matched in lower case. Such ads
+# give the whole flat's room count ("Istaba Vecrīgā", 6 rooms, 17 m²).
+ROOM_AD = re.compile(
+    r"^(?:istaba|room|комната)\b"
+    r"|\bizīrē(?:ju|jam)? istabu\b|\bistabas īre\b"
+    r"|\brooms? (?:for rent|available) in\b|\broom in (?:a|an|the|shared)\b"
+    r"|\bсда(?:ю|ется|ётся|ем) комнат"
+)
 SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+(?=[A-ZĀČĒĢĪĶĻŅŠŪŽА-ЯЁ„\"(])|\n+")
 
 
@@ -487,10 +496,16 @@ def utilities_included(text):
 
 
 def utilities_note(text, limit=240):
-    """What the ad says about utilities: its first two sentences on them."""
-    sentences = (squash(part) for part in SENTENCE_BREAK.split(text or ""))
-    picked = [sentence for sentence in sentences if UTILITY_WORDS.search(sentence)]
-    return shorten(" ".join(picked[:2]), limit)
+    """What the ad says about utilities: its first sentence on them, with the
+    next one when it ends in a colon ("Komunālie maksājumi: ~120 EUR")."""
+    parts = (squash(part) for part in SENTENCE_BREAK.split(text or ""))
+    sentences = [part for part in parts if part]
+    for number, sentence in enumerate(sentences):
+        if UTILITY_WORDS.search(sentence):
+            if sentence.endswith(":") and number + 1 < len(sentences):
+                sentence += " " + sentences[number + 1]
+            return shorten(sentence, limit)
+    return ""
 
 
 def add_details(client, ad):
@@ -527,12 +542,20 @@ def monthly_total(ad, rent):
     return ad["price"] + utilities_estimate(ad, rent)
 
 
+def is_room_ad(ad):
+    """Is the ad for one room in a shared flat rather than a whole flat? Its
+    area is too small for its room count, or its words say so."""
+    if ad["area"] and ad["rooms"] and ad["area"] < MIN_M2_PER_ROOM * ad["rooms"]:
+        return True
+    return any(ROOM_AD.search(fold(text)) for text in (ad["title"], ad.get("text")))
+
+
 def listing_match(ad, config):
     """Could the ad reach the feed? Before its own page is read, a rent ad
     only needs a monthly rent within the total."""
     if ad["rooms"] is None or ad["rooms"] < config["min_rooms"]:
         return False
-    if ad["price"] is None:
+    if ad["price"] is None or is_room_ad(ad):
         return False
     if ad["deal"] == "sell":
         return ad["price"] <= config["sale"]["max_price"]
@@ -631,9 +654,10 @@ def describe(ad, rent):
                 f"mēnesī (aplēse pēc platības), "
                 f"kopā ~{euros(monthly_total(ad, rent))}"
             )
-        if ad.get("utilities_note"):
-            note = html.escape(ad["utilities_note"])
-            lines.append(f"No sludinājuma: „{note}“")
+        # The quote is left out when the ad's opening, shown below, has it.
+        note = ad.get("utilities_note") or ""
+        if note and note.removesuffix(" …") not in (ad.get("text") or ""):
+            lines.append(f"No sludinājuma: „{html.escape(note)}“")
     if ad.get("earlier_price"):
         lines.append(f"Šis dzīvoklis barotnē jau bija par {euros(ad['earlier_price'])}")
     if ad.get("published"):
