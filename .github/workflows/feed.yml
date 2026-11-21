@@ -1,0 +1,73 @@
+name: Update feed
+
+on:
+  schedule:
+    # Every 30 minutes at :07 and :37 (UTC); runs on the hour queue up on
+    # GitHub's side.
+    - cron: "7,37 * * * *"
+  push:
+    branches: [main]
+    paths: [feed.py, config.toml, .github/workflows/feed.yml]
+  workflow_dispatch:
+    inputs:
+      pages:
+        description: >-
+          Optional backfill: also add the matching ads from the first N
+          listing pages of each section
+        required: false
+        default: "0"
+
+permissions:
+  contents: write
+  actions: write  # for the keep-alive step
+
+concurrency:
+  group: feed
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+          path: site
+
+      - name: Build feed
+        env:
+          PAGES: ${{ inputs.pages || '0' }}
+        run: python3 feed.py --site site --backfill-pages "$PAGES"
+
+      - name: Publish
+        working-directory: site
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Update feed"
+            git push
+          fi
+
+      # Runs after Publish, so the state is saved even when this fails.
+      - name: Check feed health
+        run: |
+          if [ -s problems.txt ]; then
+            sed 's/^/::error::/' problems.txt
+            exit 1
+          fi
+
+      # GitHub turns schedules off in public repos after 60 days without
+      # repository activity. Re-enabling the workflow resets that counter.
+      - name: Keep the schedule alive
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh api --method PUT
+          "repos/${{ github.repository }}/actions/workflows/feed.yml/enable"

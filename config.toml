@@ -1,0 +1,16 @@
+# What reaches the feed. A push to main rebuilds the feed with these values,
+# and they apply to the ads already in it too.
+
+# ss.com's district names, as in its URLs: centre = Centrs, vecriga = Vecrīga
+districts = ["centre", "vecriga"]
+min_rooms = 2
+
+[rent]
+max_total = 600  # EUR a month, rent plus utilities
+# Unless the ad says its rent covers utilities, they are estimated as
+# utilities_base + utilities_per_m2 × area: a 50 m² flat comes to ~150 EUR.
+utilities_base = 50  # EUR a month: water, electricity, waste
+utilities_per_m2 = 2.0  # EUR per m² a month: heating and building upkeep
+
+[sale]
+max_price = 150000  # EUR
